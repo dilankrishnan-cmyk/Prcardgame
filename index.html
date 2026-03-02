@@ -5,13 +5,10 @@
 <title>PR Card Game</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
 <style>
-body { background:#111; color:white; font-family:Arial; text-align:center; margin:0; padding:20px; }
+body { background:#111; color:white; font-family:Arial; text-align:center; }
 .hidden { display:none; }
-button { padding:10px 15px; margin:5px; cursor:pointer; }
-input { padding:8px; margin:5px; width:200px; }
-.card { width:150px; height:210px; background-size:cover; display:inline-block; margin:5px; border:2px solid #fff; border-radius:8px; }
-#marketplace { margin-top:20px; }
-.admin-section { margin-top:30px; border-top:2px solid #fff; padding-top:20px; }
+button { padding:10px; margin:5px; }
+.card { width:150px; height:210px; background-size:cover; display:inline-block; margin:5px; }
 </style>
 </head>
 <body>
@@ -28,29 +25,11 @@ input { padding:8px; margin:5px; width:200px; }
 <div id="game" class="hidden">
   <h2>Coins: <span id="coins"></span> PR</h2>
   <button onclick="buyPack()">Buy Pack (20 PR)</button>
-  <button onclick="logout()">Logout</button>
-
-  <h3>Opened Cards:</h3>
   <div id="opened"></div>
-
-  <h3>Marketplace:</h3>
-  <div id="marketplace"></div>
-
-  <div id="adminPanel" class="admin-section hidden">
-    <h2>Admin Panel</h2>
-    <h3>Add Card</h3>
-    <input id="cardName" placeholder="Card Name">
-    <input id="cardImage" placeholder="Image URL">
-    <input id="cardRarity" placeholder="Rarity (Common/Rare/Legendary)">
-    <button onclick="addCard()">Add Card</button>
-
-    <h3>All Users</h3>
-    <div id="allUsers"></div>
-  </div>
+  <button onclick="logout()">Logout</button>
 </div>
 
 <script>
-// Supabase setup
 const supabase = supabase.createClient(
   "sb_publishable_ZwbCbTBsqZqXLxhCfI0GeQ_nc7Zi1dZ",
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwaXl1dXBhc2p5bHp1eG9qc3J6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MDkxNTQsImV4cCI6MjA4Nzk4NTE1NH0.KhBQLt4hO5-dczed2efmkaU8Jk27vqY_Sa7VXm-SdkM"
@@ -59,74 +38,62 @@ const supabase = supabase.createClient(
 let user;
 let coins = 100;
 
-// Auth functions
+// Select inputs
+const emailInput = document.getElementById("email");
+const passwordInput = document.getElementById("password");
+
+// Register
 async function register() {
   const { data, error } = await supabase.auth.signUp({
-    email: email.value,
-    password: password.value
+    email: emailInput.value,
+    password: passwordInput.value
   });
-  if (error) alert(error.message);
+  if (error) return alert("Register failed: " + error.message);
+  alert("Registered! Please check your email to confirm.");
 }
 
+// Login
 async function login() {
   const { data, error } = await supabase.auth.signInWithPassword({
-    email: email.value,
-    password: password.value
+    email: emailInput.value,
+    password: passwordInput.value
   });
-  if (error) alert(error.message);
+  if (error) return alert("Login failed: " + error.message);
 }
 
-async function logout() {
-  await supabase.auth.signOut();
-  location.reload();
-}
-
-// Auth state listener
+// Auth state
 supabase.auth.onAuthStateChange(async (event, session) => {
-  if (!session) return;
+  if (session) {
+    user = session.user;
+    document.getElementById("auth").classList.add("hidden");
+    document.getElementById("game").classList.remove("hidden");
 
-  user = session.user;
-  document.getElementById("auth").classList.add("hidden");
-  document.getElementById("game").classList.remove("hidden");
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single();
 
-  // Load or create profile
-  let { data } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("email", user.email)
-    .single();
+    if (!data) {
+      await supabase.from("profiles").insert({
+        id: user.id,
+        email: user.email,
+        coins: 100
+      });
+      coins = 100;
+    } else {
+      coins = data.coins;
+    }
 
-  if (!data) {
-    const insert = await supabase.from("profiles").insert({
-      email: user.email,
-      coins: 100,
-      is_admin: user.email === "dilankrishnan@gmail.com"
-    }).select().single();
-    data = insert;
-  }
-
-  coins = data.coins;
-  document.getElementById("coins").textContent = coins;
-
-  loadMarketplace();
-
-  // Show admin panel if admin
-  if (data.is_admin) {
-    document.getElementById("adminPanel").classList.remove("hidden");
-    loadAllUsers();
+    document.getElementById("coins").textContent = coins;
   }
 });
 
 // Buy pack
 async function buyPack() {
-  if (coins < 20) return alert("Not enough PR Coins!");
+  if (coins < 20) return alert("Not enough PR Coins");
   coins -= 20;
-
-  await supabase
-    .from("profiles")
-    .update({ coins })
-    .eq("email", user.email);
-
+  await supabase.from("profiles").update({ coins }).eq("id", user.id);
   document.getElementById("coins").textContent = coins;
   openPack();
 }
@@ -134,7 +101,7 @@ async function buyPack() {
 // Open pack
 async function openPack() {
   const { data: cards } = await supabase.from("cards").select("*");
-  if (!cards.length) return alert("No cards in database.");
+  if (!cards.length) return alert("No cards added yet.");
 
   const opened = document.getElementById("opened");
   opened.innerHTML = "";
@@ -148,52 +115,12 @@ async function openPack() {
       card_id: random.id
     });
   }
-
-  loadMarketplace();
 }
 
-// Load marketplace
-async function loadMarketplace() {
-  const { data: cards } = await supabase.from("cards").select("*");
-  const marketplace = document.getElementById("marketplace");
-  marketplace.innerHTML = "";
-
-  if (!cards.length) return marketplace.innerHTML = "No cards available.";
-
-  cards.forEach(card => {
-    marketplace.innerHTML += `<div class="card" style="background-image:url('${card.image}')"></div>`;
-  });
-}
-
-// Admin: Add card
-async function addCard() {
-  const name = document.getElementById("cardName").value;
-  const image = document.getElementById("cardImage").value;
-  const rarity = document.getElementById("cardRarity").value;
-
-  if (!name || !image || !rarity) return alert("Fill all fields!");
-
-  await supabase.from("cards").insert({
-    name, image, rarity
-  });
-
-  alert("Card added!");
-  document.getElementById("cardName").value = "";
-  document.getElementById("cardImage").value = "";
-  document.getElementById("cardRarity").value = "";
-
-  loadMarketplace();
-}
-
-// Admin: Load all users
-async function loadAllUsers() {
-  const { data: users } = await supabase.from("profiles").select("*");
-  const container = document.getElementById("allUsers");
-  container.innerHTML = "";
-
-  users.forEach(u => {
-    container.innerHTML += `<p>${u.email} - Coins: ${u.coins} - Admin: ${u.is_admin ? "Yes" : "No"}</p>`;
-  });
+// Logout
+async function logout() {
+  await supabase.auth.signOut();
+  location.reload();
 }
 </script>
 
