@@ -27,33 +27,43 @@ button { padding:10px; margin:5px; }
   <button onclick="buyPack()">Buy Pack (20 PR)</button>
   <div id="opened"></div>
   <button onclick="logout()">Logout</button>
+  <div id="adminPanel" class="hidden">
+    <h3>Admin Panel</h3>
+    <button onclick="addCard()">Add Card</button>
+  </div>
 </div>
 
 <script>
 const supabase = window.supabase.createClient(
- "sb_publishable_ZwbCbTBsqZqXLxhCfI0GeQ_nc7Zi1dZ,"
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwaXl1dXBhc2p5bHp1eG9qc3J6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MDkxNTQsImV4cCI6MjA4Nzk4NTE1NH0.KhBQLt4hO5-dczed2efmkaU8Jk27vqY_Sa7VXm-SdkM"
+  "https://sb_publishable_ZwbCbTBsqZqXLxhCfI0GeQ_nc7Zi1dZ", // replace
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwaXl1dXBhc2p5bHp1eG9qc3J6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MDkxNTQsImV4cCI6MjA4Nzk4NTE1NH0.KhBQLt4hO5-dczed2efmkaU8Jk27vqY_Sa7VXm-SdkM"                     // replace
 );
+
+const emailInput = document.getElementById("email");
+const passwordInput = document.getElementById("password");
 
 let user;
 let coins = 100;
 
 async function register() {
   const { data, error } = await supabase.auth.signUp({
-    email: email.value,
-    password: password.value
+    email: emailInput.value,
+    password: passwordInput.value
   });
+  if(error) return alert("Error: " + error.message);
+  alert("Check your email to confirm registration!");
 }
 
 async function login() {
   const { data, error } = await supabase.auth.signInWithPassword({
-    email: email.value,
-    password: password.value
+    email: emailInput.value,
+    password: passwordInput.value
   });
+  if(error) return alert("Error: " + error.message);
 }
 
 supabase.auth.onAuthStateChange(async (event, session) => {
-  if (session) {
+  if(session) {
     user = session.user;
     document.getElementById("auth").classList.add("hidden");
     document.getElementById("game").classList.remove("hidden");
@@ -64,57 +74,49 @@ supabase.auth.onAuthStateChange(async (event, session) => {
       .eq("id", user.id)
       .single();
 
-    if (!data) {
-      await supabase.from("profiles").insert({
-        id: user.id,
-        coins: 100
-      });
+    if(!data) {
+      await supabase.from("profiles").insert({ id: user.id, coins: 100 });
       coins = 100;
     } else {
       coins = data.coins;
     }
 
     document.getElementById("coins").textContent = coins;
+
+    // Admin check
+    if(user.email === "dilankrishnan@gmail.com") {
+      document.getElementById("adminPanel").classList.remove("hidden");
+    }
   }
 });
 
 async function buyPack() {
-  if (coins < 20) return alert("Not enough PR Coins");
-
+  if(coins < 20) return alert("Not enough PR Coins");
   coins -= 20;
-
-  await supabase
-    .from("profiles")
-    .update({ coins: coins })
-    .eq("id", user.id);
-
+  await supabase.from("profiles").update({ coins }).eq("id", user.id);
   document.getElementById("coins").textContent = coins;
-
   openPack();
 }
 
 async function openPack() {
-  const { data: cards } = await supabase
-    .from("cards")
-    .select("*");
-
-  if (!cards.length) return alert("No cards added yet.");
+  const { data: cards } = await supabase.from("cards").select("*");
+  if(!cards.length) return alert("No cards added yet.");
 
   const opened = document.getElementById("opened");
   opened.innerHTML = "";
 
-  for (let i = 0; i < 4; i++) {
-    const random = cards[Math.floor(Math.random() * cards.length)];
-
-    opened.innerHTML += `
-      <div class="card" style="background-image:url('${random.image}')"></div>
-    `;
-
-    await supabase.from("collections").insert({
-      user_id: user.id,
-      card_id: random.id
-    });
+  for(let i=0; i<4; i++){
+    const random = cards[Math.floor(Math.random()*cards.length)];
+    opened.innerHTML += `<div class="card" style="background-image:url('${random.image}')"></div>`;
+    await supabase.from("collections").insert({ user_id: user.id, card_id: random.id });
   }
+}
+
+async function addCard() {
+  const url = prompt("Card image URL:");
+  if(!url) return;
+  await supabase.from("cards").insert({ image: url });
+  alert("Card added!");
 }
 
 async function logout() {
