@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>PR Card Game</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+<style>
+body { background:#111; color:white; font-family:Arial; text-align:center; }
+.hidden { display:none; }
+button { padding:10px; margin:5px; }
+.card { width:150px; height:210px; background-size:cover; display:inline-block; margin:5px; }
+</style>
+</head>
+<body>
+
+<h1>PR Card Game</h1>
+
+<div id="auth">
+  <input id="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Password">
+  <button onclick="register()">Register</button>
+  <button onclick="login()">Login</button>
+</div>
+
+<div id="game" class="hidden">
+  <h2>Coins: <span id="coins"></span> PR</h2>
+  <button onclick="buyPack()">Buy Pack (20 PR)</button>
+  <div id="opened"></div>
+  <button onclick="logout()">Logout</button>
+</div>
+
+<script>
+const supabase = window.supabase.createClient(
+ "sb_publishable_ZwbCbTBsqZqXLxhCfI0GeQ_nc7Zi1dZ,"
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwaXl1dXBhc2p5bHp1eG9qc3J6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MDkxNTQsImV4cCI6MjA4Nzk4NTE1NH0.KhBQLt4hO5-dczed2efmkaU8Jk27vqY_Sa7VXm-SdkM"
+);
+
+let user;
+let coins = 100;
+
+async function register() {
+  const { data, error } = await supabase.auth.signUp({
+    email: email.value,
+    password: password.value
+  });
+}
+
+async function login() {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email.value,
+    password: password.value
+  });
+}
+
+supabase.auth.onAuthStateChange(async (event, session) => {
+  if (session) {
+    user = session.user;
+    document.getElementById("auth").classList.add("hidden");
+    document.getElementById("game").classList.remove("hidden");
+
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+
+    if (!data) {
+      await supabase.from("profiles").insert({
+        id: user.id,
+        coins: 100
+      });
+      coins = 100;
+    } else {
+      coins = data.coins;
+    }
+
+    document.getElementById("coins").textContent = coins;
+  }
+});
+
+async function buyPack() {
+  if (coins < 20) return alert("Not enough PR Coins");
+
+  coins -= 20;
+
+  await supabase
+    .from("profiles")
+    .update({ coins: coins })
+    .eq("id", user.id);
+
+  document.getElementById("coins").textContent = coins;
+
+  openPack();
+}
+
+async function openPack() {
+  const { data: cards } = await supabase
+    .from("cards")
+    .select("*");
+
+  if (!cards.length) return alert("No cards added yet.");
+
+  const opened = document.getElementById("opened");
+  opened.innerHTML = "";
+
+  for (let i = 0; i < 4; i++) {
+    const random = cards[Math.floor(Math.random() * cards.length)];
+
+    opened.innerHTML += `
+      <div class="card" style="background-image:url('${random.image}')"></div>
+    `;
+
+    await supabase.from("collections").insert({
+      user_id: user.id,
+      card_id: random.id
+    });
+  }
+}
+
+async function logout() {
+  await supabase.auth.signOut();
+  location.reload();
+}
+</script>
+
+</body>
+</html>
