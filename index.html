@@ -15,13 +15,13 @@ button { padding:10px; margin:5px; }
 
 <h1>PR Card Game</h1>
 
+<!-- Login / Admin -->
 <div id="auth">
-  <input id="email" placeholder="Email">
-  <input id="password" type="password" placeholder="Password">
-  <button onclick="register()">Register</button>
-  <button onclick="login()">Login</button>
+  <input id="email" placeholder="Enter Admin Email">
+  <button onclick="login()">Login as Admin</button>
 </div>
 
+<!-- Game for regular users -->
 <div id="game" class="hidden">
   <h2>Coins: <span id="coins"></span> PR</h2>
   <button onclick="buyPack()">Buy Pack (20 PR)</button>
@@ -29,67 +29,65 @@ button { padding:10px; margin:5px; }
   <button onclick="logout()">Logout</button>
 </div>
 
+<!-- Admin Panel -->
+<div id="adminPanel" class="hidden">
+  <h2>Admin Panel</h2>
+  <p>Welcome, Admin!</p>
+  <button onclick="addCard()">Add Sample Card</button>
+  <div id="adminCards"></div>
+  <button onclick="logout()">Logout</button>
+</div>
+
 <script>
-const supabase = supabase.createClient(
-  "sb_publishable_ZwbCbTBsqZqXLxhCfI0GeQ_nc7Zi1dZ",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwaXl1dXBhc2p5bHp1eG9qc3J6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MDkxNTQsImV4cCI6MjA4Nzk4NTE1NH0.KhBQLt4hO5-dczed2efmkaU8Jk27vqY_Sa7VXm-SdkM"
-);
+const supabaseUrl = "sb_publishable_ZwbCbTBsqZqXLxhCfI0GeQ_nc7Zi1dZ";
+const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwaXl1dXBhc2p5bHp1eG9qc3J6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MDkxNTQsImV4cCI6MjA4Nzk4NTE1NH0.KhBQLt4hO5-dczed2efmkaU8Jk27vqY_Sa7VXm-SdkM";
+const supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
 let user;
 let coins = 100;
 
-// Select inputs
-const emailInput = document.getElementById("email");
-const passwordInput = document.getElementById("password");
-
-// Register
-async function register() {
-  const { data, error } = await supabase.auth.signUp({
-    email: emailInput.value,
-    password: passwordInput.value
-  });
-  if (error) return alert("Register failed: " + error.message);
-  alert("Registered! Please check your email to confirm.");
-}
-
-// Login
 async function login() {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: emailInput.value,
-    password: passwordInput.value
-  });
-  if (error) return alert("Login failed: " + error.message);
-}
-
-// Auth state
-supabase.auth.onAuthStateChange(async (event, session) => {
-  if (session) {
-    user = session.user;
-    document.getElementById("auth").classList.add("hidden");
+  const email = document.getElementById("email").value;
+  
+  // Fetch user from Supabase
+  let { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('email', email)
+    .single();
+    
+  if (error || !data) return alert("Email not found!");
+  
+  user = data;
+  document.getElementById("auth").classList.add("hidden");
+  
+  if (user.is_admin) {
+    document.getElementById("adminPanel").classList.remove("hidden");
+    loadAdminCards();
+  } else {
     document.getElementById("game").classList.remove("hidden");
-
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single();
-
-    if (!data) {
-      await supabase.from("profiles").insert({
-        id: user.id,
-        email: user.email,
-        coins: 100
-      });
-      coins = 100;
-    } else {
-      coins = data.coins;
-    }
-
+    coins = user.coins;
     document.getElementById("coins").textContent = coins;
   }
-});
+}
 
-// Buy pack
+// Admin: Add a sample card
+async function addCard() {
+  const { data, error } = await supabase.from('cards').insert([
+    { name: 'Lightning Tiger', image:'https://via.placeholder.com/150', rarity:'Epic' }
+  ]);
+  alert("Card added!");
+  loadAdminCards();
+}
+
+// Admin: display cards
+async function loadAdminCards() {
+  const { data } = await supabase.from('cards').select('*');
+  const adminCards = document.getElementById("adminCards");
+  adminCards.innerHTML = data.map(c => `<div>${c.name} (${c.rarity})</div>`).join('');
+}
+
+// Game: Buy pack
 async function buyPack() {
   if (coins < 20) return alert("Not enough PR Coins");
   coins -= 20;
@@ -98,28 +96,21 @@ async function buyPack() {
   openPack();
 }
 
-// Open pack
+// Game: Open random cards
 async function openPack() {
   const { data: cards } = await supabase.from("cards").select("*");
-  if (!cards.length) return alert("No cards added yet.");
-
+  if (!cards.length) return alert("No cards available.");
   const opened = document.getElementById("opened");
   opened.innerHTML = "";
-
   for (let i = 0; i < 4; i++) {
-    const random = cards[Math.floor(Math.random() * cards.length)];
+    const random = cards[Math.floor(Math.random()*cards.length)];
     opened.innerHTML += `<div class="card" style="background-image:url('${random.image}')"></div>`;
-
-    await supabase.from("collections").insert({
-      user_id: user.id,
-      card_id: random.id
-    });
+    await supabase.from("collections").insert({ user_id: user.id, card_id: random.id });
   }
 }
 
-// Logout
 async function logout() {
-  await supabase.auth.signOut();
+  user = null;
   location.reload();
 }
 </script>
